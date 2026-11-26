@@ -1,0 +1,233 @@
+/* Solara Corsair tactical aviation UI & glassmorphism styles */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #08121e;
+  color: #f8fafc;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  user-select: none;
+}
+
+#viewport {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+#aria-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.hidden {
+  display: none !important;
+}
+
+#top-bar {
+  position: fixed;
+  top: 14px;
+  right: 18px;
+  display: flex;
+  gap: 8px;
+  z-index: 20;
+}
+
+.pill-btn {
+  border: 1px solid rgba(94, 234, 212, 0.36);
+  background: rgba(9, 17, 29, 0.78);
+  color: #e2e8f0;
+  font: 700 11px/1 "Cascadia Mono", "Consolas", ui-monospace, monospace;
+  padding: 8px 11px;
+  border-radius: 6px;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.pill-btn:hover {
+  background: rgba(20, 38, 60, 0.92);
+  border-color: #5eead4;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 36px 48px;
+  background: linear-gradient(90deg, rgba(6, 13, 24, 0.82) 0%, rgba(6, 13, 24, 0.35) 55%, rgba(6, 13, 24, 0.08) 100%);
+  z-index: 30;
+}
+
+.modal-backdrop.centered {
+  justify-content: center;
+  background: rgba(6, 13, 24, 0.72);
+}
+
+.briefing-panel {
+  width: min(460px, 92vw);
+  background: rgba(10, 19, 32, 0.88);
+  border: 1px solid rgba(94, 234, 212, 0.32);
+  border-radius: 14px;
+  padding: 24px 26px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(8px);
+}
+
+.eyebrow {
+  font: 700 11px/1.2 "Cascadia Mono", "Consolas", ui-monospace, monospace;
+  letter-spacing: 0.14em;
+  color: #5eead4;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+h1,
+h2 {
+  margin: 0 0 8px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+h1 {
+  font-size: 28px;
+  color: #f8fafc;
+}
+
+.lead {
+  margin: 0 0 16px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: #cbd5e1;
+}
+
+#mission-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.mission-card {
+  text-align: left;
+  background: rgba(18, 30, 48, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: #e2e8f0;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.mission-card:hover {
+  border-color: rgba(94, 234, 212, 0.6);
+}
+
+.mission-card.active {
+  background: rgba(20, 48, 68, 0.92);
+  border-color: #5eead4;
+}
+
+.mission-card .m-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 3px;
+  font-size: 13.5px;
+}
+
+.mission-card .m-head span {
+  font: 700 10.5px/1 "Cascadia Mono", "Consolas", ui-monospace, monospace;
+  color: #fbbf24;
+}
+
+.mission-card p {
+  margin: 0;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.controls-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px 12px;
+  padding: 10px 12px;
+  background: rgba(8, 15, 25, 0.72);
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font: 600 11px/1.35 "Cascadia Mono", "Consolas", ui-monospace, monospace;
+  color: #cbd5e1;
+}
+
+.controls-grid b {
+  color: #5eead4;
+}
+
+.primary-btn {
+  width: 100%;
+  padding: 12px 16px;
+  border: none;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #0ea5e9 0%, #14b8a6 100%);
+  color: #06121e;
+  font: 800 14px/1 "Cascadia Mono", "Consolas", ui-monospace, monospace;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.primary-btn:hover {
+  filter: brightness(1.08);
+}
+
+.btn-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.btn-row .pill-btn {
+  flex: 1;
+  padding: 11px 12px;
+  font-size: 12px;
+}
+
+.debrief-stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.debrief-stats > div {
+  background: rgba(15, 26, 42, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.debrief-stats span {
+  display: block;
+  font: 700 10px/1 "Cascadia Mono", "Consolas", ui-monospace, monospace;
+  color: #94a3b8;
+  margin-bottom: 4px;
+}
+
+.debrief-stats strong {
+  font: 800 20px/1 "Cascadia Mono", "Consolas", ui-monospace, monospace;
+  color: #5eead4;
+}
