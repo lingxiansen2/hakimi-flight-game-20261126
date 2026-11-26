@@ -203,8 +203,8 @@ export function mat4Multiply(a, b) {
   return out;
 }
 
-/** Append one triangle (3 * 13 floats) with outward normal verification. */
-export function pushVertexTri(arr, p0, p1, p2, rgba, mat, outwardHint = null) {
+/** Append one triangle (3 * 15 floats: pos3, norm3, rgba4, mat3, uv2) with outward normal verification. */
+export function pushVertexTri(arr, p0, p1, p2, rgba, mat, outwardHint = null, uvs = null) {
   const e1x = p1.x - p0.x;
   const e1y = p1.y - p0.y;
   const e1z = p1.z - p0.z;
@@ -216,25 +216,41 @@ export function pushVertexTri(arr, p0, p1, p2, rgba, mat, outwardHint = null) {
   let nz = e1x * e2y - e1y * e2x;
   let v1 = p1;
   let v2 = p2;
+  let uv0 = uvs ? uvs[0] : [0, 0];
+  let uv1 = uvs ? uvs[1] : [1, 0];
+  let uv2 = uvs ? uvs[2] : [1, 1];
   if (outwardHint && nx * outwardHint.x + ny * outwardHint.y + nz * outwardHint.z < 0) {
     nx = -nx;
     ny = -ny;
     nz = -nz;
     v1 = p2;
     v2 = p1;
+    const tmp = uv1;
+    uv1 = uv2;
+    uv2 = tmp;
   }
   const len = Math.hypot(nx, ny, nz) || 1;
   nx /= len;
   ny /= len;
   nz /= len;
   const pts = [p0, v1, v2];
+  const uvArr = [uv0, uv1, uv2];
   for (let i = 0; i < 3; i += 1) {
     const p = pts[i];
-    arr.push(p.x, p.y, p.z, nx, ny, nz, rgba[0], rgba[1], rgba[2], rgba[3] ?? 1, mat[0], mat[1], mat[2]);
+    const uv = uvArr[i];
+    arr.push(
+      p.x, p.y, p.z,
+      nx, ny, nz,
+      rgba[0], rgba[1], rgba[2], rgba[3] ?? 1,
+      mat[0], mat[1], mat[2],
+      uv[0], uv[1],
+    );
   }
 }
 
-export function pushVertexQuad(arr, a, b, c, d, rgba, mat, outwardHint = null) {
-  pushVertexTri(arr, a, b, c, rgba, mat, outwardHint);
-  pushVertexTri(arr, a, c, d, rgba, mat, outwardHint);
+export function pushVertexQuad(arr, a, b, c, d, rgba, mat, outwardHint = null, uvScale = null) {
+  const uMax = uvScale ? uvScale[0] : 1;
+  const vMax = uvScale ? uvScale[1] : 1;
+  pushVertexTri(arr, a, b, c, rgba, mat, outwardHint, [[0, 0], [uMax, 0], [uMax, vMax]]);
+  pushVertexTri(arr, a, c, d, rgba, mat, outwardHint, [[0, 0], [uMax, vMax], [0, vMax]]);
 }

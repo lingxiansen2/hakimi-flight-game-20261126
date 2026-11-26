@@ -3,6 +3,7 @@
 import { PALETTE, VIEWPORT } from './config.js';
 import { clamp, wrapAngle } from './math3d.js';
 import { getActiveTarget } from './missions.js';
+import { drawTacticalMinimap } from './minimap.js';
 
 const FONT_MONO = '"Cascadia Mono", "Consolas", ui-monospace, monospace';
 const FONT_SANS = 'system-ui, -apple-system, "Segoe UI", sans-serif';
@@ -470,9 +471,10 @@ export function createHudRenderer(hudCanvas) {
 
     ctx.save();
     const deckGrad = ctx.createLinearGradient(0, panelY, 0, h);
-    deckGrad.addColorStop(0, '#222d3c');
-    deckGrad.addColorStop(0.08, '#131b26');
-    deckGrad.addColorStop(1, '#080c12');
+    deckGrad.addColorStop(0, '#2a3647');
+    deckGrad.addColorStop(0.06, '#182230');
+    deckGrad.addColorStop(0.65, '#111824');
+    deckGrad.addColorStop(1, '#070b11');
     ctx.fillStyle = deckGrad;
     ctx.beginPath();
     ctx.moveTo(0, panelY + 26);
@@ -481,8 +483,41 @@ export function createHudRenderer(hudCanvas) {
     ctx.lineTo(0, h);
     ctx.closePath();
     ctx.fill();
-    ctx.strokeStyle = '#475569';
+
+    // Brushed metal horizontal grain & machined panel seams + hex rivets
+    ctx.save();
+    ctx.clip();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+    ctx.lineWidth = 1;
+    for (let y = panelY; y < h; y += 3) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(15, 23, 42, 0.75)';
+    ctx.lineWidth = 2;
+    for (const sx of [310, 722, 998]) {
+      ctx.beginPath();
+      ctx.moveTo(sx, panelY);
+      ctx.lineTo(sx, h);
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#64748b';
+    for (const rx of [22, 300, 320, 712, 732, 988, 1008, w - 22]) {
+      for (const ry of [558, 704]) {
+        ctx.beginPath();
+        ctx.arc(rx, ry, 2.3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+
+    ctx.strokeStyle = '#526277';
     ctx.lineWidth = 2.6;
+    ctx.beginPath();
+    ctx.moveTo(0, panelY + 26);
+    ctx.quadraticCurveTo(w * 0.5, panelY - 14, w, panelY + 26);
     ctx.stroke();
 
     const kts = Math.round(ac.airspeed * 1.94384);
@@ -748,6 +783,7 @@ export function createHudRenderer(hudCanvas) {
       drawTopCompass(ac, targetBearingRad);
       drawSideTapes(ac);
       drawBottomSystemsAndNav(ac, ms, world, cam);
+      drawTacticalMinimap(ctx, ac, ms, world, cam.mode, simTime);
       drawTargetAndBanners(ac, ms, world, proj);
     },
   };

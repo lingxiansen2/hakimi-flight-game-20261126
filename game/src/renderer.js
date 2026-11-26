@@ -1,4 +1,4 @@
-// WebGL2 PBR 3D rendering pipeline (with graceful Canvas2D fallback if WebGL2 is unavailable).
+// WebGL2 PBR 3D rendering pipeline with procedural textures, billboarded cloud sprites, and thermal particles.
 
 import { VIEWPORT } from './config.js';
 import {
@@ -11,31 +11,31 @@ import {
   mat4View,
   norm3,
   pushVertexQuad,
-  pushVertexTri,
 } from './math3d.js';
-import { WORLD_HALF_EXTENT } from './world.js';
+import { THERMALS, WORLD_HALF_EXTENT } from './world.js';
 import { SKY_FRAG, SKY_VERT } from './shaders/sky.glsl.js';
 import { OCEAN_FRAG, OCEAN_VERT } from './shaders/ocean.glsl.js';
 import { TERRAIN_FRAG, TERRAIN_VERT } from './shaders/terrain.glsl.js';
 import { MESH_FRAG, MESH_VERT } from './shaders/mesh.glsl.js';
 import { createColoredMesh, createHeightMapTexture, createShaderProgram, createTerrainMesh } from './glcore.js';
+import { createProceduralTextures } from './textures.js';
 import { buildSculptedAirframeData, buildAircraftDynamicData } from './aircraft.js';
-import { buildStaticTerrainBuffers, buildStaticWorldPropsData } from './worldmesh.js';
+import { buildStaticTerrainBuffers, buildStaticWorldMeshes } from './worldmesh.js';
 
 const THEMES = {
   day: {
-    zenith: [0.07, 0.25, 0.56],
-    mid: [0.22, 0.52, 0.80],
-    horizon: [0.80, 0.88, 0.94],
+    zenith: [0.07, 0.26, 0.58],
+    mid: [0.22, 0.54, 0.82],
+    horizon: [0.80, 0.89, 0.95],
     sunColor: [1.0, 0.97, 0.86],
     sunDir: norm3({ x: 0.52, y: 0.56, z: 0.64 }),
   },
   golden: {
-    zenith: [0.09, 0.22, 0.46],
-    mid: [0.34, 0.48, 0.72],
-    horizon: [0.96, 0.75, 0.50],
-    sunColor: [1.0, 0.88, 0.64],
-    sunDir: norm3({ x: 0.45, y: 0.34, z: 0.82 }),
+    zenith: [0.09, 0.24, 0.50],
+    mid: [0.35, 0.50, 0.75],
+    horizon: [0.97, 0.77, 0.52],
+    sunColor: [1.0, 0.89, 0.66],
+    sunDir: norm3({ x: 0.45, y: 0.36, z: 0.82 }),
   },
   storm: {
     zenith: [0.08, 0.13, 0.21],
@@ -45,11 +45,11 @@ const THEMES = {
     sunDir: norm3({ x: -0.35, y: 0.44, z: 0.82 }),
   },
   sunset: {
-    zenith: [0.11, 0.12, 0.32],
-    mid: [0.46, 0.27, 0.48],
-    horizon: [0.98, 0.54, 0.36],
-    sunColor: [1.0, 0.74, 0.45],
-    sunDir: norm3({ x: 0.60, y: 0.22, z: 0.76 }),
+    zenith: [0.14, 0.14, 0.36],
+    mid: [0.50, 0.30, 0.52],
+    horizon: [0.98, 0.58, 0.38],
+    sunColor: [1.0, 0.78, 0.48],
+    sunDir: norm3({ x: -0.35, y: 0.32, z: 0.88 }),
   },
 };
 
@@ -97,41 +97,10 @@ function createFullscreenQuadVao(gl) {
   return vao;
 }
 
-/** Build dynamic cloud + turbine blade + target gate + contrail geometry. */
-function buildDynamicWorldData(world, ac, missionState, simTime, storm) {
+/** Build spinning turbine blades, checkpoint rings, contrails, and rising thermal updraft particles. */
+function buildDynamicWorldData(world, ac, missionState, simTime) {
   const arr = [];
-  const cloudTop = storm > 0.4 ? [0.54, 0.59, 0.66, 0.88] : [1.0, 0.98, 0.95, 0.90];
-  const cloudBot = storm > 0.4 ? [0.34, 0.39, 0.46, 0.84] : [0.78, 0.85, 0.93, 0.84];
-  const cloudMatTop = storm > 0.4 ? [0.95, 0.0, 0.28] : [0.95, 0.0, 0.56];
-  const cloudMatBot = storm > 0.4 ? [0.95, 0.0, 0.16] : [0.95, 0.0, 0.34];
 
-  // Volumetric shaded 3D cloud decks (8-triangle octahedral puffs with lit scatter)
-  for (let i = 0; i < world.clouds.length; i += 1) {
-    const c = world.clouds[i];
-    const driftX = ((c.x + simTime * 4.5 + 4200) % 8400) - 4200;
-    for (let j = 0; j < c.puffs.length; j += 1) {
-      const p = c.puffs[j];
-      const cx = driftX + p.ox;
-      const cy = c.y + p.oy;
-      const cz = c.z + p.oz;
-      const top = { x: cx, y: cy + p.ry, z: cz };
-      const bot = { x: cx, y: cy - p.ry * 0.45, z: cz };
-      const ring = [
-        { x: cx - p.rx, y: cy, z: cz - p.rz * 0.6 },
-        { x: cx + p.rx, y: cy, z: cz - p.rz * 0.6 },
-        { x: cx + p.rx, y: cy, z: cz + p.rz * 0.6 },
-        { x: cx - p.rx, y: cy, z: cz + p.rz * 0.6 },
-      ];
-      for (let k = 0; k < 4; k += 1) {
-        const a = ring[k];
-        const b = ring[(k + 1) % 4];
-        pushVertexTri(arr, a, b, top, cloudTop, cloudMatTop, { x: 0, y: 1, z: 0 });
-        pushVertexTri(arr, b, a, bot, cloudBot, cloudMatBot, { x: 0, y: -1, z: 0 });
-      }
-    }
-  }
-
-  // Spinning wind turbine blades
   for (let i = 0; i < world.landmarks.length; i += 1) {
     const lm = world.landmarks[i];
     if (lm.kind !== 'turbine') continue;
@@ -155,6 +124,32 @@ function buildDynamicWorldData(world, ac, missionState, simTime, storm) {
     }
   }
 
+  // Rising golden volcanic thermal rings & ember particles over Caldera thermals
+  for (let t = 0; t < THERMALS.length; t += 1) {
+    const th = THERMALS[t];
+    for (let r = 0; r < 4; r += 1) {
+      const phase = ((simTime * 0.22 + r * 0.25) % 1);
+      const y = 125 + phase * 240;
+      const rad = 28 + phase * 32;
+      const alpha = Math.sin(phase * Math.PI) * 0.45;
+      const segs = 14;
+      for (let s = 0; s < segs; s += 1) {
+        const a0 = (s / segs) * Math.PI * 2 + simTime * 0.6;
+        const a1 = ((s + 1) / segs) * Math.PI * 2 + simTime * 0.6;
+        pushVertexQuad(
+          arr,
+          { x: th.x + Math.cos(a0) * rad, y, z: th.z + Math.sin(a0) * rad },
+          { x: th.x + Math.cos(a1) * rad, y, z: th.z + Math.sin(a1) * rad },
+          { x: th.x + Math.cos(a1) * (rad + 2.4), y: y + 2.5, z: th.z + Math.sin(a1) * (rad + 2.4) },
+          { x: th.x + Math.cos(a0) * (rad + 2.4), y: y + 2.5, z: th.z + Math.sin(a0) * (rad + 2.4) },
+          [1.0, 0.66, 0.22, alpha],
+          [0.2, 0, 1.5],
+          { x: 0, y: 1, z: 0 },
+        );
+      }
+    }
+  }
+
   // Glowing 3D checkpoint rings
   const gates = missionState.gates;
   for (let i = 0; i < gates.length; i += 1) {
@@ -169,9 +164,9 @@ function buildDynamicWorldData(world, ac, missionState, simTime, storm) {
     const ca = Math.cos(yaw);
     const sa = Math.sin(yaw);
     const segs = 18;
-    const cyan = isNext ? [0.25, 0.96, 0.88, 0.94] : [0.45, 0.72, 0.90, 0.45];
-    const gold = isNext ? [1.0, 0.82, 0.25, 0.96] : [0.45, 0.72, 0.90, 0.45];
-    const mat = isNext ? [0.2, 0.0, 1.35] : [0.4, 0.0, 0.45];
+    const cyan = isNext ? [0.25, 0.96, 0.88, 0.94] : [0.45, 0.72, 0.90, 0.42];
+    const gold = isNext ? [1.0, 0.82, 0.25, 0.96] : [0.45, 0.72, 0.90, 0.42];
+    const mat = isNext ? [0.2, 0.0, 1.40] : [0.4, 0.0, 0.45];
 
     for (let s = 0; s < segs; s += 1) {
       const a0 = (s / segs) * Math.PI * 2 + simTime * (isNext ? 0.45 : 0.1);
@@ -193,7 +188,7 @@ function buildDynamicWorldData(world, ac, missionState, simTime, storm) {
       for (let i = 1; i < ac.contrails.length; i += 1) {
         const a = ac.contrails[i - 1][tipKey];
         const b = ac.contrails[i][tipKey];
-        const alpha = clamp(ac.contrails[i].life * 0.55, 0.02, 0.55);
+        const alpha = clamp(ac.contrails[i].life * 0.58, 0.02, 0.58);
         pushVertexQuad(
           arr,
           { x: a.x - 0.18, y: a.y, z: a.z },
@@ -201,7 +196,7 @@ function buildDynamicWorldData(world, ac, missionState, simTime, storm) {
           { x: b.x + 0.18, y: b.y, z: b.z },
           { x: b.x - 0.18, y: b.y, z: b.z },
           [0.95, 0.98, 1.0, alpha],
-          [0.3, 0, 0.5],
+          [0.3, 0, 0.55],
           { x: 0, y: 1, z: 0 },
         );
       }
@@ -211,14 +206,60 @@ function buildDynamicWorldData(world, ac, missionState, simTime, storm) {
   return new Float32Array(arr);
 }
 
+/** Build depth-sorted soft billboarded cumulus cloud sprites (zero faceted cloud polygons!). */
+function buildCloudSpritesData(world, cam, simTime, theme, storm) {
+  const puffs = [];
+  for (let i = 0; i < world.clouds.length; i += 1) {
+    const c = world.clouds[i];
+    const driftX = ((c.x + simTime * 4.5 + 4200) % 8400) - 4200;
+    for (let j = 0; j < c.puffs.length; j += 1) {
+      const p = c.puffs[j];
+      const wx = driftX + p.ox;
+      const wy = c.y + p.oy;
+      const wz = c.z + p.oz;
+      const dx = wx - cam.pos.x;
+      const dy = wy - cam.pos.y;
+      const dz = wz - cam.pos.z;
+      const dist = dx * cam.basis.forward.x + dy * cam.basis.forward.y + dz * cam.basis.forward.z;
+      if (dist < 25 || dist > 3900) continue;
+      puffs.push({ wx, wy, wz, w: p.rx * 2.1, h: p.ry * 2.2, dist });
+    }
+  }
+  puffs.sort((a, b) => b.dist - a.dist);
+
+  const arr = [];
+  const r = cam.basis.right;
+  const u = cam.basis.up;
+  const f = cam.basis.forward;
+  const tint = storm > 0.4
+    ? [0.58, 0.63, 0.70, 0.82]
+    : [
+      clamp(theme.horizon[0] * 0.35 + 0.68, 0, 1),
+      clamp(theme.horizon[1] * 0.35 + 0.66, 0, 1),
+      clamp(theme.horizon[2] * 0.30 + 0.68, 0, 1),
+      0.86,
+    ];
+
+  for (let i = 0; i < puffs.length; i += 1) {
+    const pf = puffs[i];
+    const hw = pf.w * 0.7;
+    const hh = pf.h * 0.75;
+    const p0 = { x: pf.wx - r.x * hw - u.x * hh, y: pf.wy - r.y * hw - u.y * hh, z: pf.wz - r.z * hw - u.z * hh };
+    const p1 = { x: pf.wx + r.x * hw - u.x * hh, y: pf.wy + r.y * hw - u.y * hh, z: pf.wz + r.z * hw - u.z * hh };
+    const p2 = { x: pf.wx + r.x * hw + u.x * hh, y: pf.wy + r.y * hw + u.y * hh, z: pf.wz + r.z * hw + u.z * hh };
+    const p3 = { x: pf.wx - r.x * hw + u.x * hh, y: pf.wy - r.y * hw + u.y * hh, z: pf.wz - r.z * hw + u.z * hh };
+    pushVertexQuad(arr, p0, p1, p2, p3, tint, [1, 0, 0], { x: -f.x, y: -f.y, z: -f.z });
+  }
+  return new Float32Array(arr);
+}
+
 export function createRenderer(glCanvas, world) {
   const gl = glCanvas.getContext('webgl2', { antialias: true, alpha: false, preserveDrawingBuffer: true });
   if (!gl) {
-    // Lightweight Canvas2D fallback if WebGL2 is unavailable
     const ctx2d = glCanvas.getContext('2d');
     return {
       isWebGL2: false,
-      drawScene(wObj, ac, cam, ms) {
+      drawScene() {
         ctx2d.fillStyle = '#1b4978';
         ctx2d.fillRect(0, 0, VIEWPORT.width, VIEWPORT.height);
         return { worldPointToScreen: () => null };
@@ -231,16 +272,20 @@ export function createRenderer(glCanvas, world) {
   const terrainProg = createShaderProgram(gl, TERRAIN_VERT, TERRAIN_FRAG);
   const meshProg = createShaderProgram(gl, MESH_VERT, MESH_FRAG);
 
+  const textures = createProceduralTextures(gl);
   const skyQuad = createFullscreenQuadVao(gl);
   const oceanVao = createOceanPlaneVao(gl);
   const heightTex = createHeightMapTexture(gl, 512, WORLD_HALF_EXTENT, world.getHeight);
 
   const terrainBufs = buildStaticTerrainBuffers(world);
   const terrainVao = createTerrainMesh(gl, terrainBufs.verts, terrainBufs.indices);
-  const staticPropsMesh = createColoredMesh(gl, buildStaticWorldPropsData(world), false);
+  const worldMeshes = buildStaticWorldMeshes(world);
+  const staticTarmacMesh = createColoredMesh(gl, worldMeshes.tarmacData, false);
+  const staticPropsMesh = createColoredMesh(gl, worldMeshes.propsData, false);
   const staticAirframeMesh = createColoredMesh(gl, buildSculptedAirframeData(), false);
   const dynamicAirframeMesh = createColoredMesh(gl, new Float32Array(0), true);
   const dynamicWorldMesh = createColoredMesh(gl, new Float32Array(0), true);
+  const cloudSpritesMesh = createColoredMesh(gl, new Float32Array(0), true);
 
   const identityMat = mat4Identity();
 
@@ -300,7 +345,7 @@ export function createRenderer(glCanvas, world) {
       gl.bindVertexArray(oceanVao.vao);
       gl.drawElements(gl.TRIANGLES, oceanVao.indexCount, gl.UNSIGNED_SHORT, 0);
 
-      // 3. FBM Volcanic Island Terrain
+      // 3. Detailed FBM Volcanic Island Terrain
       gl.useProgram(terrainProg.program);
       gl.uniformMatrix4fv(terrainProg.uniforms.uViewProj, false, viewProj);
       gl.uniform3f(terrainProg.uniforms.uCamPos, cam.pos.x, cam.pos.y, cam.pos.z);
@@ -308,10 +353,13 @@ export function createRenderer(glCanvas, world) {
       gl.uniform3fv(terrainProg.uniforms.uSunColor, theme.sunColor);
       gl.uniform3fv(terrainProg.uniforms.uHorizonColor, theme.horizon);
       gl.uniform1f(terrainProg.uniforms.uStorm, storm);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, textures.terrainDetail);
+      gl.uniform1i(terrainProg.uniforms.uDetailTex, 0);
       gl.bindVertexArray(terrainVao.vao);
       gl.drawElements(gl.TRIANGLES, terrainVao.indexCount, gl.UNSIGNED_INT, 0);
 
-      // 4. Static PBR Landmarks, Runways, Carrier, Harbor & Trees
+      // 4. Textured Runways & Static World Landmarks (Carrier, Bridge, Harbor Town, Lighthouse, Trees)
       gl.useProgram(meshProg.program);
       gl.uniformMatrix4fv(meshProg.uniforms.uViewProj, false, viewProj);
       gl.uniformMatrix4fv(meshProg.uniforms.uModel, false, identityMat);
@@ -322,6 +370,16 @@ export function createRenderer(glCanvas, world) {
       gl.uniform3fv(meshProg.uniforms.uZenithColor, theme.zenith);
       gl.uniform1f(meshProg.uniforms.uStorm, storm);
       gl.uniform1f(meshProg.uniforms.uNoFog, 0);
+
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, textures.tarmac);
+      gl.uniform1i(meshProg.uniforms.uTex, 0);
+      gl.uniform1i(meshProg.uniforms.uTexMode, 2);
+      gl.bindVertexArray(staticTarmacMesh.vao);
+      gl.drawArrays(gl.TRIANGLES, 0, staticTarmacMesh.vertexCount);
+
+      gl.bindTexture(gl.TEXTURE_2D, textures.metalPanel);
+      gl.uniform1i(meshProg.uniforms.uTexMode, 1);
       gl.bindVertexArray(staticPropsMesh.vao);
       gl.drawArrays(gl.TRIANGLES, 0, staticPropsMesh.vertexCount);
 
@@ -331,10 +389,12 @@ export function createRenderer(glCanvas, world) {
         const acModel = mat4FromBasisPos(acBasis, ac.pos);
         gl.uniformMatrix4fv(meshProg.uniforms.uModel, false, acModel);
         gl.uniform1f(meshProg.uniforms.uNoFog, 1);
+        gl.uniform1i(meshProg.uniforms.uTexMode, 1);
         gl.bindVertexArray(staticAirframeMesh.vao);
         gl.drawArrays(gl.TRIANGLES, 0, staticAirframeMesh.vertexCount);
 
         dynamicAirframeMesh.update(buildAircraftDynamicData(ac));
+        gl.uniform1i(meshProg.uniforms.uTexMode, 0);
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
         gl.bindVertexArray(dynamicAirframeMesh.vao);
@@ -342,21 +402,28 @@ export function createRenderer(glCanvas, world) {
         gl.disable(gl.BLEND);
       }
 
-      // 6. Volumetric Clouds, Turbines, Target Gates & Contrails
-      dynamicWorldMesh.update(buildDynamicWorldData(worldObj, ac, missionState, simTime, storm));
+      // 6. Soft Billowy Cumulus Cloud Sprites + Dynamic Thermals, Gates & Contrails
       gl.uniformMatrix4fv(meshProg.uniforms.uModel, false, identityMat);
       gl.uniform1f(meshProg.uniforms.uNoFog, 0);
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
       gl.depthMask(false);
+
+      cloudSpritesMesh.update(buildCloudSpritesData(worldObj, cam, simTime, theme, storm));
+      gl.bindTexture(gl.TEXTURE_2D, textures.cloudSprite);
+      gl.uniform1i(meshProg.uniforms.uTexMode, 3);
+      gl.bindVertexArray(cloudSpritesMesh.vao);
+      gl.drawArrays(gl.TRIANGLES, 0, cloudSpritesMesh.vertexCount);
+
+      dynamicWorldMesh.update(buildDynamicWorldData(worldObj, ac, missionState, simTime));
+      gl.uniform1i(meshProg.uniforms.uTexMode, 0);
       gl.bindVertexArray(dynamicWorldMesh.vao);
       gl.drawArrays(gl.TRIANGLES, 0, dynamicWorldMesh.vertexCount);
+
       gl.depthMask(true);
       gl.disable(gl.BLEND);
-
       gl.bindVertexArray(null);
 
-      // Return screen projection helper for HUD target diamond
       return {
         worldPointToScreen(wp) {
           const dx = wp.x - cam.pos.x;

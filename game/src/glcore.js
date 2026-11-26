@@ -35,7 +35,7 @@ export function createShaderProgram(gl, vertSrc, fragSrc) {
   return { program: prog, uniforms };
 }
 
-/** Build a mesh VAO with layout: pos(3), normal(3), color(4), material(3) = 13 floats/vertex. */
+/** Build a mesh VAO with layout: pos(3), normal(3), color(4), material(3), uv(2) = 15 floats/vertex. */
 export function createColoredMesh(gl, data, dynamic = false) {
   const vao = gl.createVertexArray();
   const vbo = gl.createBuffer();
@@ -43,7 +43,7 @@ export function createColoredMesh(gl, data, dynamic = false) {
   gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
   gl.bufferData(gl.ARRAY_BUFFER, data, dynamic ? gl.DYNAMIC_DRAW : gl.STATIC_DRAW);
 
-  const stride = 13 * 4;
+  const stride = 15 * 4;
   gl.enableVertexAttribArray(0);
   gl.vertexAttribPointer(0, 3, gl.FLOAT, false, stride, 0);
   gl.enableVertexAttribArray(1);
@@ -52,16 +52,18 @@ export function createColoredMesh(gl, data, dynamic = false) {
   gl.vertexAttribPointer(2, 4, gl.FLOAT, false, stride, 6 * 4);
   gl.enableVertexAttribArray(3);
   gl.vertexAttribPointer(3, 3, gl.FLOAT, false, stride, 10 * 4);
+  gl.enableVertexAttribArray(4);
+  gl.vertexAttribPointer(4, 2, gl.FLOAT, false, stride, 13 * 4);
 
   gl.bindVertexArray(null);
   return {
     vao,
     vbo,
-    vertexCount: Math.floor(data.length / 13),
+    vertexCount: Math.floor(data.length / 15),
     update(newData) {
       gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
       gl.bufferData(gl.ARRAY_BUFFER, newData, gl.DYNAMIC_DRAW);
-      this.vertexCount = Math.floor(newData.length / 13);
+      this.vertexCount = Math.floor(newData.length / 15);
     },
   };
 }
