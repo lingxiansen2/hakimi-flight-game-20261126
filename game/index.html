@@ -3,12 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Solara Corsair // Archipelago Flight</title>
+  <title>Solara Corsair // WebGL2 Archipelago Flight</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%230f2c59'/%3E%3Cpath d='M16 5l4 10 8 3-8 2-2 7-2-7-8-2 8-3z' fill='%235eead4'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-  <canvas id="viewport" aria-label="Solara Corsair 3D Flight Simulator"></canvas>
+  <canvas id="gl-canvas" aria-label="Solara Corsair WebGL2 3D Viewport"></canvas>
+  <canvas id="hud-canvas" aria-hidden="true"></canvas>
   <p id="aria-status" role="status" aria-live="polite"></p>
 
   <div id="ui-overlay">
@@ -20,9 +21,9 @@
 
     <div id="title-modal" class="modal-backdrop">
       <div class="briefing-panel">
-        <div class="eyebrow">SC-7 TWIN-BOOM SEAPLANE</div>
+        <div class="eyebrow">SC-7 TWIN-BOOM CORSAIR // WEBGL2 PBR</div>
         <h1>SOLARA CORSAIR</h1>
-        <p class="lead">Fly canyon passes, coastal lighthouses, and volcanic calderas across the Solara Archipelago. Manage fuel, flaps, gear, and wind gusts.</p>
+        <p class="lead">Fly canyon passes, volcanic thermals, stormfront carrier approaches, and coastal lighthouses across the Solara Archipelago.</p>
         <div id="mission-list"></div>
         <div class="controls-grid">
           <div><b>ARROWS / A,D</b> Pitch &amp; Roll</div>
@@ -40,7 +41,7 @@
       <div class="briefing-panel">
         <div class="eyebrow">FLIGHT HOLD</div>
         <h2>SORTIE PAUSED</h2>
-        <p class="lead">Use [V] to switch between Chase, Lit Cockpit, and Orbit views, or [C] to toggle mouse-yoke steering.</p>
+        <p class="lead">Use [V] to switch between Chase, 6-Dial Cockpit, and Orbit views, or [C] to toggle mouse-yoke steering.</p>
         <div class="btn-row">
           <button id="resume-btn" class="primary-btn" type="button">RESUME</button>
           <button id="restart-btn" class="pill-btn" type="button">RESTART</button>

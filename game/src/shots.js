@@ -1,4 +1,4 @@
-// Deterministic screenshot scene staging using the real flight physics and autopilot steering.
+// Deterministic screenshot scene staging using real flight physics, WebGL2 atmospheres, and autopilot.
 
 import { MISSIONS, STEP } from './config.js';
 import { clamp, wrapAngle } from './math3d.js';
@@ -6,7 +6,6 @@ import { createAircraftState, stepFlightPhysics } from './physics.js';
 import { createMissionState, getActiveTarget, stepMissionState } from './missions.js';
 import { createCameraState, stepCamera } from './camera.js';
 
-/** Simple proportional autopilot that steers toward an active waypoint or runway glidepath. */
 function autopilotToward(ac, targetPos, desiredSpeed, desiredAlt) {
   const bearing = Math.atan2(targetPos.x - ac.pos.x, targetPos.z - ac.pos.z);
   const hdgErr = wrapAngle(bearing - ac.yaw);
@@ -18,7 +17,7 @@ function autopilotToward(ac, targetPos, desiredSpeed, desiredAlt) {
   const pitch = clamp((wantedPitch - ac.pitch) * 2.4, -1, 1);
 
   const spdErr = desiredSpeed - ac.airspeed;
-  const targetThrottle = clamp(0.68 + spdErr * 0.04, 0.35, 0.96);
+  const targetThrottle = clamp(0.72 + spdErr * 0.04, 0.38, 0.96);
   const throttleDelta = clamp((targetThrottle - ac.throttle) * 3.0, -1, 1);
 
   return {
@@ -35,33 +34,32 @@ function autopilotToward(ac, targetPos, desiredSpeed, desiredAlt) {
 
 export function stageShotScene(shotName, world) {
   let mission = MISSIONS[0];
-  let simSteps = 150;
+  let simSteps = 120;
   let camMode = 'chase';
 
   if (shotName === 'cockpit') {
-    mission = MISSIONS[1]; // Golden-hour Stormwatch Beacon Run
+    mission = MISSIONS[1]; // Stormfront Carrier Approach
     camMode = 'cockpit';
-    simSteps = 120;
-  } else if (shotName === 'canyon') {
-    mission = MISSIONS[2]; // Sunset Sunburst Slalom Trial
-    camMode = 'chase';
-    simSteps = 110;
-  } else if (shotName === 'landing') {
-    mission = MISSIONS[0]; // Final approach onto Solara strip
-    camMode = 'chase';
     simSteps = 85;
+  } else if (shotName === 'canyon') {
+    mission = MISSIONS[3]; // Sunset Canyon Slalom
+    camMode = 'chase';
+    simSteps = 95;
+  } else if (shotName === 'landing') {
+    mission = MISSIONS[2]; // Caldera Thermal Rescue final approach into Solara
+    camMode = 'chase';
+    simSteps = 80;
   }
 
   const ac = createAircraftState(mission);
   const ms = createMissionState(mission);
 
-  // Position each shot cleanly along its mission corridor, then fly real simulation frames forward
   if (shotName === 'chase') {
-    // Classic cover: sweeping banking approach over Solara Airfield & turquoise bay toward Gate 1 & Caldera peaks
-    ac.pos = { x: -135, y: 155, z: -560 };
-    ac.yaw = 0.24;
+    // Cover: Golden-hour banking chase view over Solara Airfield & Harbor toward Bay Channel & Caldera
+    ac.pos = { x: -110, y: 145, z: -480 };
+    ac.yaw = 0.25;
     ac.pitch = 0.01;
-    ac.roll = -0.34;
+    ac.roll = -0.30;
     ac.throttle = 0.78;
     ac.airspeed = 68;
     ac.vel = { x: Math.sin(ac.yaw) * 68, y: 0.4, z: Math.cos(ac.yaw) * 68 };
@@ -71,25 +69,29 @@ export function stageShotScene(shotName, world) {
     ms.bannerText = ms.gates[1].label;
     ms.score = 420;
   } else if (shotName === 'cockpit') {
-    // Lit Cockpit looking straight toward Solara runway & Beacon 6
-    ac.pos = { x: -720, y: 178, z: 780 };
-    ac.yaw = 2.42;
-    ac.pitch = -0.02;
-    ac.roll = 0.08;
-    ac.throttle = 0.74;
-    ac.airspeed = 66;
-    ac.vel = { x: Math.sin(ac.yaw) * 66, y: -1.0, z: Math.cos(ac.yaw) * 66 };
-    ms.currentGateIndex = 5;
-    ms.gatesCleared = 5;
-    for (let i = 0; i < 5; i += 1) ms.gates[i].cleared = true;
-    ms.bannerText = ms.gates[5].label;
-    ms.score = 1940;
+    // 6-dial + MFD + Combiner Cockpit approaching CVN-07 Solara Aircraft Carrier in storm rain
+    ac.pos = { x: -640, y: 122, z: 1320 };
+    ac.yaw = 0.22;
+    ac.pitch = -0.05;
+    ac.roll = 0.06;
+    ac.gearDown = true;
+    ac.gearDeploy = 1;
+    ac.flaps = true;
+    ac.throttle = 0.62;
+    ac.airspeed = 58;
+    ac.vel = { x: Math.sin(ac.yaw) * 58, y: -2.2, z: Math.cos(ac.yaw) * 58 };
+    ms.currentGateIndex = 2;
+    ms.gatesCleared = 2;
+    ms.gates[0].cleared = true;
+    ms.gates[1].cleared = true;
+    ms.bannerText = 'CARRIER GROOVE // GEAR DOWN & HOOK SET';
+    ms.score = 1360;
   } else if (shotName === 'canyon') {
-    // High-banked canyon carving toward Caldera Saddle gate
-    ac.pos = { x: 610, y: 278, z: 1180 };
-    ac.yaw = 0.68;
+    // Sunset high-bank slalom with boost afterburner & contrails toward Volcano Canyon gate
+    ac.pos = { x: 610, y: 272, z: 1180 };
+    ac.yaw = 0.66;
     ac.pitch = 0.04;
-    ac.roll = 0.68;
+    ac.roll = 0.66;
     ac.throttle = 0.94;
     ac.airspeed = 86;
     ac.boosting = true;
@@ -98,24 +100,23 @@ export function stageShotScene(shotName, world) {
     ms.gatesCleared = 3;
     for (let i = 0; i < 3; i += 1) ms.gates[i].cleared = true;
     ms.bannerText = ms.gates[3].label;
-    ms.score = 1280;
+    ms.score = 1580;
   } else if (shotName === 'landing') {
-    // Short final approach into Solara Airfield with Gear Down and Flaps Deployed
-    ac.pos = { x: 14, y: 84, z: -560 };
+    // Short final into Solara Airfield with Gear Down, Flaps Set, PAPI & Runway markings
+    ac.pos = { x: 12, y: 78, z: -535 };
     ac.yaw = -0.03;
     ac.pitch = -0.04;
     ac.roll = 0.03;
     ac.gearDown = true;
     ac.gearDeploy = 1;
     ac.flaps = true;
-    ac.throttle = 0.44;
-    ac.airspeed = 47;
-    ac.vel = { x: Math.sin(ac.yaw) * 47, y: -3.2, z: Math.cos(ac.yaw) * 47 };
+    ac.throttle = 0.48;
+    ac.airspeed = 48;
+    ac.vel = { x: Math.sin(ac.yaw) * 48, y: -3.0, z: Math.cos(ac.yaw) * 48 };
     ms.runwayPhase = 'landing';
-    ms.mission = { ...MISSIONS[1], title: 'Solara Final Approach', targetRunwayId: 'solara' };
     for (let i = 0; i < ms.gates.length; i += 1) ms.gates[i].cleared = true;
-    ms.gatesCleared = 6;
-    ms.bannerText = 'FINAL APPROACH // GEAR DOWN & FLAPS SET';
+    ms.gatesCleared = ms.gates.length;
+    ms.bannerText = 'FINAL APPROACH // GEAR DOWN & FLAPS 30°';
     ms.score = 2480;
   }
 
@@ -127,14 +128,12 @@ export function stageShotScene(shotName, world) {
   for (let i = 0; i < simSteps; i += 1) {
     simTime += STEP;
     const target = getActiveTarget(ms, world.runways);
-    const desiredAlt = shotName === 'landing' ? 54 : target.y;
-    const desiredSpd = shotName === 'landing' ? 46 : shotName === 'canyon' ? 88 : 68;
+    const desiredAlt = shotName === 'landing' ? 50 : shotName === 'cockpit' ? 76 : target.y;
+    const desiredSpd = shotName === 'landing' ? 46 : shotName === 'cockpit' ? 58 : shotName === 'canyon' ? 88 : 68;
     const ctrl = autopilotToward(ac, target, desiredSpd, desiredAlt);
-    if (shotName === 'chase' && i > simSteps - 40) {
-      ctrl.roll = -0.65;
-    }
-    if (shotName === 'canyon' && i > simSteps - 45) {
-      ctrl.roll = 0.85;
+    if (shotName === 'chase' && i > simSteps - 38) ctrl.roll = -0.58;
+    if (shotName === 'canyon' && i > simSteps - 42) {
+      ctrl.roll = 0.86;
       ctrl.boost = true;
     }
     stepFlightPhysics(ac, ctrl, world, ms.mission, STEP, simTime);

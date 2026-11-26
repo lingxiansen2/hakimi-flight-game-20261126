@@ -1,4 +1,4 @@
-// Game bootstrap, fixed-timestep loop, UI screens (Title, Play, Pause, Debrief), and deterministic shot mode.
+// Game bootstrap, fixed-timestep loop, WebGL2 + Canvas2D HUD orchestration, and deterministic shot mode.
 
 import { CAMERA_MODES, MISSIONS, STEP, STORAGE_KEY, VIEWPORT } from './config.js';
 import { createWorld } from './world.js';
@@ -14,13 +14,16 @@ import { stageShotScene } from './shots.js';
 const params = new URLSearchParams(window.location.search);
 const shotParam = params.get('shot');
 
-const canvas = document.getElementById('viewport');
-canvas.width = VIEWPORT.width;
-canvas.height = VIEWPORT.height;
+const glCanvas = document.getElementById('gl-canvas');
+const hudCanvas = document.getElementById('hud-canvas');
+glCanvas.width = VIEWPORT.width;
+glCanvas.height = VIEWPORT.height;
+hudCanvas.width = VIEWPORT.width;
+hudCanvas.height = VIEWPORT.height;
 
 const world = createWorld();
-const renderer = createRenderer(canvas);
-const hud = createHudRenderer(canvas);
+const renderer = createRenderer(glCanvas, world);
+const hud = createHudRenderer(hudCanvas);
 
 function runShotMode(shotName) {
   const uiOverlay = document.getElementById('ui-overlay');
@@ -30,7 +33,7 @@ function runShotMode(shotName) {
   let painted = 0;
   function paint() {
     const proj = renderer.drawScene(world, ac, cam, ms, simTime);
-    hud.drawHud(ac, ms, world, cam, proj, true);
+    hud.drawHud(ac, ms, world, cam, proj, simTime, true);
     painted += 1;
     if (painted < 2) requestAnimationFrame(paint);
     else window.__shotReady = true;
@@ -54,12 +57,12 @@ function saveRecord(missionId, score) {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(recs));
     }
   } catch {
-    // Ignore storage unavailability in private browsing
+    // Ignore storage unavailability
   }
 }
 
 function runInteractiveGame() {
-  const input = createInputController(canvas);
+  const input = createInputController(glCanvas);
   const audio = createAudioEngine();
 
   const ariaStatus = document.getElementById('aria-status');
@@ -79,7 +82,7 @@ function runInteractiveGame() {
   const pauseToggleBtn = document.getElementById('pause-toggle-btn');
 
   let selectedMissionIndex = 0;
-  let screen = 'title'; // 'title' | 'play' | 'paused' | 'debrief'
+  let screen = 'title';
   let ac = createAircraftState(MISSIONS[0]);
   let ms = createMissionState(MISSIONS[0]);
   let cam = createCameraState(ac);
@@ -132,6 +135,7 @@ function runInteractiveGame() {
     simTime = 0;
     accumulator = 0;
     screen = 'play';
+    camToggleBtn.textContent = '[V] CAM: CHASE';
     syncUiVisibility();
     announce(`Sortie launched: ${mission.title}`);
   }
@@ -144,14 +148,14 @@ function runInteractiveGame() {
     const statsEl = document.getElementById('debrief-stats');
     titleEl.textContent = success ? `SORTIE COMPLETE // ${ms.grade}` : 'AIRFRAME LOST';
     summaryEl.textContent = success
-      ? `Safe touchdown at ${ac.onRunway?.name ?? 'airfield'}. Hull ${Math.round(ac.hull)}%, Fuel ${Math.round(ac.fuel)}%.`
+      ? `${ms.touchdownGrade} touchdown at ${ac.onRunway?.name ?? 'airfield'}. Hull ${Math.round(ac.hull)}%, Fuel ${Math.round(ac.fuel)}%.`
       : `${ac.crashReason}. Maintain airspeed above 55 KTS and extend gear [G] before touchdown.`;
     const mm = String(Math.floor(ms.elapsed / 60)).padStart(2, '0');
     const ss = String(Math.floor(ms.elapsed % 60)).padStart(2, '0');
     statsEl.innerHTML = `
       <div><span>SCORE</span><strong>${ms.score}</strong></div>
       <div><span>TIME</span><strong>${mm}:${ss}</strong></div>
-      <div><span>GATES</span><strong>${ms.gatesCleared}/${ms.gates.length}</strong></div>
+      <div><span>TOUCHDOWN</span><strong>${ac.lastTouchdownGrade || 'N/A'}</strong></div>
       <div><span>HULL</span><strong>${Math.round(ac.hull)}%</strong></div>
     `;
     syncUiVisibility();
@@ -194,7 +198,6 @@ function runInteractiveGame() {
   function stepSimulation(controls) {
     simTime += STEP;
     if (screen === 'title') {
-      // Gentle scenic flyover on the live title backdrop
       const autoCtrl = {
         roll: Math.sin(simTime * 0.35) * 0.25,
         pitch: Math.cos(simTime * 0.25) * 0.08,
@@ -241,8 +244,7 @@ function runInteractiveGame() {
       screen = screen === 'play' ? 'paused' : 'play';
       syncUiVisibility();
     }
-    if (controls.confirm && screen === 'title') startSortie();
-    else if (controls.confirm && screen === 'debrief') startSortie();
+    if (controls.confirm && (screen === 'title' || screen === 'debrief')) startSortie();
 
     if (screen === 'play' || screen === 'title') {
       accumulator += dt;
@@ -258,7 +260,7 @@ function runInteractiveGame() {
 
     audio.updateFlight(ac, dt, screen === 'play');
     const proj = renderer.drawScene(world, ac, cam, ms, simTime);
-    hud.drawHud(ac, ms, world, cam, proj, screen === 'play');
+    hud.drawHud(ac, ms, world, cam, proj, simTime, screen === 'play');
   }
 
   renderMissionButtons();

@@ -1,7 +1,8 @@
-// Solara Archipelago world generator: terrain heightfield, islands, airstrips, landmarks, and clouds.
+// Solara Archipelago world: high-detail FBM ridge terrain, airstrips, CVN-07 carrier, harbor, and landmarks.
 
-import { clamp, hexToRgb, lerp } from './math3d.js';
-import { PALETTE } from './config.js';
+import { clamp, lerp } from './math3d.js';
+
+export const WORLD_HALF_EXTENT = 4200;
 
 function hash2(ix, iz) {
   const h = Math.sin(ix * 127.1 + iz * 311.7) * 43758.5453123;
@@ -22,13 +23,15 @@ function valueNoise(x, z) {
   return lerp(lerp(a, b, ux), lerp(c, d, ux), uz);
 }
 
-function fbm(x, z) {
+function ridgeFbm(x, z) {
   let sum = 0;
-  let amp = 0.55;
-  let freq = 1;
-  for (let i = 0; i < 3; i += 1) {
-    sum += amp * (valueNoise(x * freq, z * freq) * 2 - 1);
-    freq *= 2.05;
+  let amp = 0.52;
+  let freq = 1.0;
+  for (let i = 0; i < 5; i += 1) {
+    const n = valueNoise(x * freq, z * freq) * 2 - 1;
+    const ridge = 1 - Math.abs(n);
+    sum += amp * (ridge * 0.65 + n * 0.35);
+    freq *= 2.08;
     amp *= 0.48;
   }
   return sum;
@@ -44,6 +47,7 @@ export const RUNWAYS = [
     yaw: 0,
     length: 480,
     width: 38,
+    isCarrier: false,
   },
   {
     id: 'windward',
@@ -54,6 +58,7 @@ export const RUNWAYS = [
     yaw: 0.08,
     length: 390,
     width: 34,
+    isCarrier: false,
   },
   {
     id: 'atoll',
@@ -64,67 +69,82 @@ export const RUNWAYS = [
     yaw: 0.65,
     length: 340,
     width: 32,
+    isCarrier: false,
+  },
+  {
+    id: 'carrier',
+    name: 'CVN-07 Solara Carrier Deck',
+    x: -520,
+    z: 1880,
+    y: 22,
+    yaw: 0.18,
+    length: 290,
+    width: 50,
+    isCarrier: true,
   },
 ];
 
 export const LANDMARKS = [
-  { kind: 'tower', x: 56, z: 30, y: 18, height: 34 },
-  { kind: 'hangar', x: -64, z: -70, y: 18, width: 34, depth: 26, height: 14 },
-  { kind: 'lighthouse', x: -1020, z: 1120, y: 58, height: 56 },
-  { kind: 'turbine', x: 1240, z: -260, y: 74, height: 54, phase: 0.2 },
-  { kind: 'turbine', x: 1520, z: -680, y: 88, height: 54, phase: 1.7 },
-  { kind: 'turbine', x: 1490, z: -220, y: 72, height: 54, phase: 3.1 },
-  { kind: 'relay', x: 150, z: 2880, y: 410, height: 48 },
+  { kind: 'tower', x: 56, z: 30, y: 18, height: 36 },
+  { kind: 'hangar', x: -64, z: -70, y: 18, width: 36, depth: 28, height: 15 },
+  { kind: 'hangar', x: -64, z: -120, y: 18, width: 32, depth: 24, height: 14 },
+  { kind: 'windsock', x: 34, z: -165, y: 18, height: 13 },
+  { kind: 'harbor', x: 255, z: -140, y: 0.5, yaw: 0.2 },
+  { kind: 'lighthouse', x: -1020, z: 1120, y: 58, height: 58 },
+  { kind: 'turbine', x: 1240, z: -260, y: 74, height: 56, phase: 0.2 },
+  { kind: 'turbine', x: 1520, z: -680, y: 88, height: 56, phase: 1.7 },
+  { kind: 'turbine', x: 1490, z: -220, y: 72, height: 56, phase: 3.1 },
+  { kind: 'turbine', x: 1620, z: -420, y: 82, height: 56, phase: 4.2 },
+  { kind: 'relay', x: 150, z: 2880, y: 410, height: 50 },
+];
+
+export const THERMALS = [
+  { x: 960, z: 1620, radius: 220, lift: 7.5 },
+  { x: 480, z: 2200, radius: 190, lift: 6.0 },
 ];
 
 const ISLANDS = [
-  // Solara Airfield main coastal plateau
-  { x: 0, z: 40, rx: 430, rz: 520, height: 32, flatTop: 18 },
-  // Solara western ridge
-  { x: -340, z: 160, rx: 240, rz: 300, height: 115, sharp: 1.3 },
-  // Caldera Ridge (twin peaks + navigable central saddle pass around x=960, z=1620)
-  { x: 740, z: 1620, rx: 320, rz: 360, height: 440, sharp: 1.5 },
-  { x: 1210, z: 1640, rx: 330, rz: 370, height: 465, sharp: 1.55 },
-  { x: 965, z: 1620, rx: 380, rz: 440, height: 140, flatTop: 110 },
-  // Lighthouse Point + offshore sea-stacks
-  { x: -1040, z: 1120, rx: 360, rz: 340, height: 96, flatTop: 58 },
-  { x: -1290, z: 1360, rx: 95, rz: 95, height: 165, sharp: 2.1 },
-  { x: -860, z: 1460, rx: 80, rz: 80, height: 145, sharp: 2.2 },
-  // Windward Cliff Strip & Wind Farm
-  { x: 1380, z: -480, rx: 360, rz: 450, height: 92, flatTop: 66 },
-  { x: 1660, z: -640, rx: 240, rz: 280, height: 215, sharp: 1.4 },
-  // Coral Atoll Crescent
-  { x: -1360, z: -1180, rx: 340, rz: 360, height: 26, flatTop: 12 },
-  { x: -1580, z: -1380, rx: 180, rz: 190, height: 85, sharp: 1.4 },
-  // Northern Stormwatch Spire
-  { x: 150, z: 2880, rx: 520, rz: 480, height: 510, sharp: 1.65 },
-  { x: -240, z: 2660, rx: 240, rz: 240, height: 220, sharp: 1.5 },
+  { x: 0, z: 40, rx: 450, rz: 540, height: 34, flatTop: 18 },
+  { x: -340, z: 160, rx: 250, rz: 310, height: 128, sharp: 1.3 },
+  { x: 740, z: 1620, rx: 330, rz: 370, height: 455, sharp: 1.45 },
+  { x: 1210, z: 1640, rx: 340, rz: 380, height: 475, sharp: 1.5 },
+  { x: 965, z: 1620, rx: 390, rz: 450, height: 145, flatTop: 112 },
+  { x: -1040, z: 1120, rx: 370, rz: 350, height: 102, flatTop: 58 },
+  { x: -1290, z: 1360, rx: 100, rz: 100, height: 175, sharp: 2.0 },
+  { x: -860, z: 1460, rx: 85, rz: 85, height: 150, sharp: 2.1 },
+  { x: 1380, z: -480, rx: 380, rz: 460, height: 96, flatTop: 66 },
+  { x: 1660, z: -640, rx: 250, rz: 290, height: 228, sharp: 1.4 },
+  { x: -1360, z: -1180, rx: 350, rz: 370, height: 28, flatTop: 12 },
+  { x: -1580, z: -1380, rx: 190, rz: 200, height: 92, sharp: 1.4 },
+  { x: 150, z: 2880, rx: 540, rz: 490, height: 525, sharp: 1.6 },
+  { x: -240, z: 2660, rx: 250, rz: 250, height: 230, sharp: 1.45 },
 ];
 
-/** Compute deterministic terrain elevation at world (x, z). Sea level is 0. */
 export function getTerrainHeight(x, z) {
-  let maxH = -6;
-  const noise = fbm(x * 0.0028, z * 0.0028);
+  let maxH = -16;
+  const noise = ridgeFbm(x * 0.0032, z * 0.0032);
+  const crag = ridgeFbm(x * 0.0078 + 13.7, z * 0.0078 - 9.2);
 
   for (let i = 0; i < ISLANDS.length; i += 1) {
     const isl = ISLANDS[i];
     const dx = (x - isl.x) / isl.rx;
     const dz = (z - isl.z) / isl.rz;
     const d2 = dx * dx + dz * dz;
-    if (d2 >= 1.35) continue;
+    if (d2 >= 1.45) continue;
     const falloff = Math.max(0, 1 - d2);
     const power = isl.sharp ?? 1.1;
     let h = Math.pow(falloff, power) * isl.height;
-    h += noise * Math.min(48, isl.height * 0.22) * falloff;
+    const detailAmp = Math.min(138, isl.height * 0.42);
+    h += ((noise - 0.12) * 0.72 + (crag - 0.1) * 0.42) * detailAmp * falloff;
     if (isl.flatTop && h > isl.flatTop) {
-      h = lerp(isl.flatTop, h, 0.14);
+      h = lerp(isl.flatTop, h, 0.12);
     }
     if (h > maxH) maxH = h;
   }
 
-  // Carve flat airstrip pads cleanly into island surfaces
   for (let i = 0; i < RUNWAYS.length; i += 1) {
     const r = RUNWAYS[i];
+    if (r.isCarrier) continue;
     const dx = x - r.x;
     const dz = z - r.z;
     const ca = Math.cos(r.yaw);
@@ -134,9 +154,7 @@ export function getTerrainHeight(x, z) {
     const padL = r.length * 0.62;
     const padW = r.width * 1.9;
     if (along < padL && across < padW) {
-      const blendAlong = clamp((padL - along) / 55, 0, 1);
-      const blendAcross = clamp((padW - across) / 34, 0, 1);
-      const blend = Math.min(blendAlong, blendAcross);
+      const blend = Math.min(clamp((padL - along) / 55, 0, 1), clamp((padW - across) / 34, 0, 1));
       maxH = lerp(maxH, r.y, blend);
     }
   }
@@ -144,7 +162,13 @@ export function getTerrainHeight(x, z) {
   return maxH;
 }
 
-/** Check if (x, z) lies on a runway deck and return runway descriptor or null. */
+/** Return effective deck/ground elevation including the aircraft carrier flight deck. */
+export function getSurfaceHeightWithCarrier(x, z) {
+  const rw = findRunwayUnder(x, z);
+  if (rw && rw.isCarrier) return rw.y;
+  return getTerrainHeight(x, z);
+}
+
 export function findRunwayUnder(x, z) {
   for (let i = 0; i < RUNWAYS.length; i += 1) {
     const r = RUNWAYS[i];
@@ -154,58 +178,41 @@ export function findRunwayUnder(x, z) {
     const sa = Math.sin(r.yaw);
     const along = Math.abs(dx * sa + dz * ca);
     const across = Math.abs(dx * ca - dz * sa);
-    if (along <= r.length * 0.52 && across <= r.width * 0.62) {
-      return r;
-    }
+    if (along <= r.length * 0.52 && across <= r.width * 0.62) return r;
   }
   return null;
 }
 
-const RGB_CACHE = {
-  sand: hexToRgb(PALETTE.sand),
-  grassLight: hexToRgb(PALETTE.grassLight),
-  grassDark: hexToRgb(PALETTE.grassDark),
-  rockLight: hexToRgb(PALETTE.rockLight),
-  rockDark: hexToRgb(PALETTE.rockDark),
-  volcanoPeak: hexToRgb(PALETTE.volcanoPeak),
-  snowCap: hexToRgb(PALETTE.snowCap),
-  shallows: hexToRgb(PALETTE.oceanShallows),
-  oceanMid: hexToRgb(PALETTE.oceanMid),
-  oceanDeep: hexToRgb(PALETTE.oceanDeep),
-};
-
-export function classifySurfaceRgb(avgY, slopeY) {
-  if (avgY <= 0.6) {
-    return avgY > -2.6 ? RGB_CACHE.shallows : RGB_CACHE.oceanMid;
+export function getThermalLift(x, z) {
+  let lift = 0;
+  for (let i = 0; i < THERMALS.length; i += 1) {
+    const t = THERMALS[i];
+    const d = Math.hypot(x - t.x, z - t.z);
+    if (d < t.radius) lift += t.lift * (1 - d / t.radius);
   }
-  if (avgY < 6.5) return RGB_CACHE.sand;
-  if (slopeY < 0.72) return avgY > 180 ? RGB_CACHE.rockDark : RGB_CACHE.rockLight;
-  if (avgY > 395) return RGB_CACHE.snowCap;
-  if (avgY > 250) return RGB_CACHE.volcanoPeak;
-  if (avgY > 140) return RGB_CACHE.rockLight;
-  return avgY > 55 ? RGB_CACHE.grassDark : RGB_CACHE.grassLight;
+  return lift;
 }
 
-/** Build deterministic layered volumetric clouds across the archipelago. */
 export function createClouds() {
   const clouds = [];
   const anchors = [
-    [-700, 470, 500], [520, 520, 740], [1150, 560, 1280], [-1150, 440, 1650],
-    [100, 610, 2240], [-450, 510, -420], [1080, 480, -820], [-1450, 460, -680],
-    [1680, 530, 320], [420, 490, -1420], [-820, 540, 2450], [1480, 590, 2120],
+    [-700, 460, 500], [520, 510, 740], [1150, 540, 1280], [-1150, 420, 1650],
+    [100, 590, 2240], [-450, 490, -420], [1080, 470, -820], [-1450, 450, -680],
+    [1680, 520, 320], [420, 480, -1420], [-820, 520, 2450], [1480, 560, 2120],
+    [-600, 360, 1520], [-360, 390, 2050],
   ];
   for (let i = 0; i < anchors.length; i += 1) {
     const [cx, cy, cz] = anchors[i];
     const puffs = [];
-    for (let j = 0; j < 4; j += 1) {
-      const ang = (j / 4) * Math.PI * 2 + i * 0.7;
+    for (let j = 0; j < 5; j += 1) {
+      const ang = (j / 5) * Math.PI * 2 + i * 0.7;
       puffs.push({
-        ox: Math.cos(ang) * (46 + (j % 2) * 32),
-        oy: (j % 2 === 0 ? 16 : -6),
-        oz: Math.sin(ang) * (42 + (j % 2) * 26),
-        rx: 74 + (j % 3) * 24,
-        ry: 34 + (j % 2) * 14,
-        rz: 62 + (j % 2) * 22,
+        ox: Math.cos(ang) * (42 + (j % 2) * 34),
+        oy: (j % 2 === 0 ? 18 : -6) + (j === 4 ? 22 : 0),
+        oz: Math.sin(ang) * (38 + (j % 2) * 26),
+        rx: 68 + (j % 3) * 24,
+        ry: 32 + (j % 2) * 14,
+        rz: 58 + (j % 2) * 22,
       });
     }
     clouds.push({ x: cx, y: cy, z: cz, puffs });
@@ -213,41 +220,39 @@ export function createClouds() {
   return clouds;
 }
 
-/** Scatter deterministic low-poly trees on island slopes away from runways. */
 export function createTrees() {
   const trees = [];
-  for (let i = 0; i < 95; i += 1) {
+  for (let i = 0; i < 220; i += 1) {
     const isl = ISLANDS[i % ISLANDS.length];
     const ang = hash2(i, 11) * Math.PI * 2;
-    const rad = 0.18 + hash2(i, 23) * 0.56;
+    const rad = 0.14 + hash2(i, 23) * 0.62;
     const x = isl.x + Math.cos(ang) * isl.rx * rad;
     const z = isl.z + Math.sin(ang) * isl.rz * rad;
     const y = getTerrainHeight(x, z);
-    if (y < 8 || y > 160 || findRunwayUnder(x, z)) continue;
-    // Keep clear of runway lateral approach corridors
+    if (y < 7 || y > 175 || findRunwayUnder(x, z)) continue;
     let nearRunway = false;
     for (let r = 0; r < RUNWAYS.length; r += 1) {
       const rw = RUNWAYS[r];
-      if (Math.abs(x - rw.x) < rw.width * 2.2 && Math.abs(z - rw.z) < rw.length * 0.7) {
+      if (!rw.isCarrier && Math.abs(x - rw.x) < rw.width * 2.4 && Math.abs(z - rw.z) < rw.length * 0.72) {
         nearRunway = true;
         break;
       }
     }
     if (nearRunway) continue;
-    trees.push({ x, y, z, h: 11 + hash2(i, 37) * 9, r: 4.5 + hash2(i, 51) * 3 });
+    trees.push({ x, y, z, h: 12 + hash2(i, 37) * 10, r: 4.5 + hash2(i, 51) * 3.5 });
   }
   return trees;
 }
 
 export function createWorld() {
-  const clouds = createClouds();
-  const trees = createTrees();
   return {
     runways: RUNWAYS,
     landmarks: LANDMARKS,
-    clouds,
-    trees,
+    clouds: createClouds(),
+    trees: createTrees(),
     getHeight: getTerrainHeight,
+    getSurfaceHeight: getSurfaceHeightWithCarrier,
     findRunway: findRunwayUnder,
+    getThermalLift,
   };
 }

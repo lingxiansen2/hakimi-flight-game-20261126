@@ -144,3 +144,97 @@ export function shadeAndFogColor(baseRgb, shade, fogRgb, fogAmount) {
   const b = Math.round(clamp(baseRgb[2] * shade, 0, 255) * (1 - f) + fogRgb[2] * f);
   return `rgb(${r},${g},${b})`;
 }
+
+export function mat4Identity() {
+  return new Float32Array([
+    1, 0, 0, 0,
+    0, 1, 0, 0,
+    0, 0, 1, 0,
+    0, 0, 0, 1,
+  ]);
+}
+
+export function mat4Perspective(fovYRad, aspect, near, far) {
+  const f = 1 / Math.tan(fovYRad * 0.5);
+  const nf = 1 / (near - far);
+  return new Float32Array([
+    f / aspect, 0, 0, 0,
+    0, f, 0, 0,
+    0, 0, (far + near) * nf, -1,
+    0, 0, 2 * far * near * nf, 0,
+  ]);
+}
+
+export function mat4View(camPos, camBasis) {
+  const { right: r, up: u, forward: f } = camBasis;
+  return new Float32Array([
+    r.x, u.x, -f.x, 0,
+    r.y, u.y, -f.y, 0,
+    r.z, u.z, -f.z, 0,
+    -(r.x * camPos.x + r.y * camPos.y + r.z * camPos.z),
+    -(u.x * camPos.x + u.y * camPos.y + u.z * camPos.z),
+    f.x * camPos.x + f.y * camPos.y + f.z * camPos.z,
+    1,
+  ]);
+}
+
+export function mat4FromBasisPos(basis, pos) {
+  const { right: r, up: u, forward: f } = basis;
+  return new Float32Array([
+    r.x, r.y, r.z, 0,
+    u.x, u.y, u.z, 0,
+    f.x, f.y, f.z, 0,
+    pos.x, pos.y, pos.z, 1,
+  ]);
+}
+
+export function mat4Multiply(a, b) {
+  const out = new Float32Array(16);
+  for (let col = 0; col < 4; col += 1) {
+    const b0 = b[col * 4];
+    const b1 = b[col * 4 + 1];
+    const b2 = b[col * 4 + 2];
+    const b3 = b[col * 4 + 3];
+    out[col * 4] = a[0] * b0 + a[4] * b1 + a[8] * b2 + a[12] * b3;
+    out[col * 4 + 1] = a[1] * b0 + a[5] * b1 + a[9] * b2 + a[13] * b3;
+    out[col * 4 + 2] = a[2] * b0 + a[6] * b1 + a[10] * b2 + a[14] * b3;
+    out[col * 4 + 3] = a[3] * b0 + a[7] * b1 + a[11] * b2 + a[15] * b3;
+  }
+  return out;
+}
+
+/** Append one triangle (3 * 13 floats) with outward normal verification. */
+export function pushVertexTri(arr, p0, p1, p2, rgba, mat, outwardHint = null) {
+  const e1x = p1.x - p0.x;
+  const e1y = p1.y - p0.y;
+  const e1z = p1.z - p0.z;
+  const e2x = p2.x - p0.x;
+  const e2y = p2.y - p0.y;
+  const e2z = p2.z - p0.z;
+  let nx = e1y * e2z - e1z * e2y;
+  let ny = e1z * e2x - e1x * e2z;
+  let nz = e1x * e2y - e1y * e2x;
+  let v1 = p1;
+  let v2 = p2;
+  if (outwardHint && nx * outwardHint.x + ny * outwardHint.y + nz * outwardHint.z < 0) {
+    nx = -nx;
+    ny = -ny;
+    nz = -nz;
+    v1 = p2;
+    v2 = p1;
+  }
+  const len = Math.hypot(nx, ny, nz) || 1;
+  nx /= len;
+  ny /= len;
+  nz /= len;
+  const pts = [p0, v1, v2];
+  for (let i = 0; i < 3; i += 1) {
+    const p = pts[i];
+    arr.push(p.x, p.y, p.z, nx, ny, nz, rgba[0], rgba[1], rgba[2], rgba[3] ?? 1, mat[0], mat[1], mat[2]);
+  }
+}
+
+export function pushVertexQuad(arr, a, b, c, d, rgba, mat, outwardHint = null) {
+  pushVertexTri(arr, a, b, c, rgba, mat, outwardHint);
+  pushVertexTri(arr, a, c, d, rgba, mat, outwardHint);
+}

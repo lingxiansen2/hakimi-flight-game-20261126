@@ -15,13 +15,18 @@ body {
   user-select: none;
 }
 
-#viewport {
+#gl-canvas,
+#hud-canvas {
   position: fixed;
   inset: 0;
   width: 100%;
   height: 100%;
   display: block;
   touch-action: none;
+}
+
+#hud-canvas {
+  pointer-events: none;
 }
 
 #aria-status {
